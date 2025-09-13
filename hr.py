@@ -77,10 +77,9 @@ model = nn.Sequential(
 
 model.to(device)
 
-augment = torch.nn.Sequential(
-    K.RandomAffine(degrees=15, translate=(0.05, 0.05), scale=(0.9, 1.1)),
-    K.RandomBrightness(0.2),
-    K.RandomContrast(0.3)
+augment = nn.Sequential(
+    K.RandomAffine(degrees=3, translate=(0.05, 0.05), scale=(0.95, 1.05)), 
+    K.RandomContrast(0.05) 
 ).to(device)
 
 def train_one_epoch(model, loader, criterion, optimizer, device):
@@ -125,7 +124,7 @@ criterion = nn.CrossEntropyLoss()
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-train_model(model, train_loader, val_loader, criterion, optimizer, device, epochs=5)
+train_model(model, train_loader, val_loader, criterion, optimizer, device, epochs=30)
 
 torch.save(model.state_dict(), "cnn_emnist_upper_weights.pth")
 
@@ -143,14 +142,12 @@ def plot_softmax_predictions(model, loader, device, n=10, num_classes=NUM_CLASSE
             for i in range(X_batch.size(0)):
                 plt.figure(figsize=(6, 4))
                 
-                # Show the image
                 img = X_batch[i].cpu().squeeze()
                 plt.subplot(1,2,1)
                 plt.imshow(img, cmap='gray')
                 plt.title(f"True: {y_batch[i].item()}, Pred: {preds[i]}")
                 plt.axis('off')
                 
-                # Show the probabilities
                 plt.subplot(1,2,2)
                 plt.bar(range(num_classes), probs[i])
                 plt.xticks(range(num_classes))
