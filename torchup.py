@@ -2,6 +2,7 @@ import uvicorn
 import random 
 import torch
 import uuid
+import time
 import numpy as np
 import cv2
 import io
@@ -25,10 +26,11 @@ app.add_middleware(
 )
 
 NUM_CLASSES = 26
-
 LABELS = [chr(i) for i in range(ord("A"), ord("Z")+1)]
 
-TARGETS = {} 
+# Token storage with expiration
+TARGETS = {}  # token -> (label, timestamp)
+EXPIRATION_TIME = 300  # 5 minutes in seconds
 
 model = nn.Sequential(
     nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1),
@@ -53,11 +55,8 @@ model = nn.Sequential(
 )
 
 model.load_state_dict(torch.load("cnn_emnist_upper_weights.pth", map_location="cpu"))
-
 model.eval()
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 model.to(device)
 
 def preprocess_image(file_bytes):
@@ -67,15 +66,25 @@ def preprocess_image(file_bytes):
         return None
     img = cv2.resize(img, (28, 28))
     img = img.astype(np.float32) / 255.0
-    img = np.expand_dims(img, axis=0) 
-    img = np.expand_dims(img, axis=0)  
+    img = np.expand_dims(img, axis=0)  # channel
+    img = np.expand_dims(img, axis=0)  # batch
     return torch.from_numpy(img)
+
+def get_target(token):
+    data = TARGETS.get(token)
+    if data is None:
+        return None
+    label, timestamp = data
+    if time.time() - timestamp > EXPIRATION_TIME:
+        del TARGETS[token]  # remove expired token
+        return None
+    return label
 
 @app.get("/random_label_image")
 async def random_label_image():
     token = str(uuid.uuid4())
     label = random.choice(LABELS)
-    TARGETS[token] = label
+    TARGETS[token] = (label, time.time())
 
     img = Image.new("RGBA", (112, 112), color=(0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -106,10 +115,9 @@ async def random_label_image():
 @app.post("/predict")
 async def predict(file: UploadFile = File(...), token: str = Form(...)):
     try:
-       
-        target = TARGETS.get(token)
+        target = get_target(token)
         if target is None:
-            return JSONResponse({"error": "Invalid or missing token"}, status_code=400)
+            return JSONResponse({"error": "Invalid, missing, or expired token"}, status_code=400)
 
         img_tensor = preprocess_image(await file.read())
         if img_tensor is None:
@@ -123,9 +131,7 @@ async def predict(file: UploadFile = File(...), token: str = Form(...)):
 
         is_match = pred_label == target
 
-        return {
-            "match": is_match
-        }
+        return {"match": is_match}
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
