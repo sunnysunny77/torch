@@ -28,9 +28,8 @@ app.add_middleware(
 NUM_CLASSES = 26
 LABELS = [chr(i) for i in range(ord("A"), ord("Z")+1)]
 
-# Token storage with expiration
-TARGETS = {}  # token -> (label, timestamp)
-EXPIRATION_TIME = 300  # 5 minutes in seconds
+TARGETS = {}
+EXPIRATION_TIME = 300
 
 model = nn.Sequential(
     nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1),
@@ -66,8 +65,8 @@ def preprocess_image(file_bytes):
         return None
     img = cv2.resize(img, (28, 28))
     img = img.astype(np.float32) / 255.0
-    img = np.expand_dims(img, axis=0)  # channel
-    img = np.expand_dims(img, axis=0)  # batch
+    img = np.expand_dims(img, axis=0)  
+    img = np.expand_dims(img, axis=0)  
     return torch.from_numpy(img)
 
 def get_target(token):
@@ -76,7 +75,7 @@ def get_target(token):
         return None
     label, timestamp = data
     if time.time() - timestamp > EXPIRATION_TIME:
-        del TARGETS[token]  # remove expired token
+        del TARGETS[token] 
         return None
     return label
 
