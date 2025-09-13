@@ -1,7 +1,7 @@
 let drawing = false;
 
-const CANVAS_WIDTH = 140;
-const CANVAS_HEIGHT = 140;
+const CANVAS_WIDTH = 280;
+const CANVAS_HEIGHT = 280;
 const INVERT = false;
 
 const host = "http://127.0.0.1:8000";
@@ -57,7 +57,52 @@ predictBtn.addEventListener("click", async () => {
     predictBtn.disabled = true;
     message.innerHTML = "<img class='spinner' src='./images/spinner.gif' width='30' height='30' alt='spinner' />";
 
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    const tmpCanvas = document.createElement("canvas");
+    const tmpCtx = tmpCanvas.getContext("2d");
+    tmpCanvas.width = 28;
+    tmpCanvas.height = 28;
+
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let xMin = canvas.width, xMax = 0, yMin = canvas.height, yMax = 0;
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const idx = (y * canvas.width + x) * 4;
+        const alpha = imgData.data[idx + 3];
+        if (alpha > 0) { 
+          if (x < xMin) xMin = x;
+          if (x > xMax) xMax = x;
+          if (y < yMin) yMin = y;
+          if (y > yMax) yMax = y;
+        }
+      }
+    }
+
+    if (xMax < xMin || yMax < yMin) {
+      message.innerText = "Draw something first!";
+      predictBtn.disabled = false;
+      return;
+    }
+
+    const boxWidth = xMax - xMin + 1;
+    const boxHeight = yMax - yMin + 1;
+    const scale = 20 / Math.max(boxWidth, boxHeight);
+    const newWidth = Math.round(boxWidth * scale);
+    const newHeight = Math.round(boxHeight * scale);
+
+  
+    tmpCtx.fillStyle = INVERT ? "white" : "black";
+    tmpCtx.fillRect(0, 0, 28, 28);
+
+    tmpCtx.drawImage(
+      canvas,
+      xMin, yMin, boxWidth, boxHeight,
+      Math.round((28 - newWidth) / 2),
+      Math.round((28 - newHeight) / 2),
+      newWidth,
+      newHeight
+    );
+
+    const blob = await new Promise(resolve => tmpCanvas.toBlob(resolve, "image/png"));
 
     const formData = new FormData();
     formData.append("file", blob, "canvas.png");
@@ -71,7 +116,6 @@ predictBtn.addEventListener("click", async () => {
     if (!res.ok) throw new Error(res.statusText);
 
     const data = await res.json();
-
     message.innerText = data.match ? "Correct": "Wrong";
 
   } catch (err) {
@@ -81,7 +125,6 @@ predictBtn.addEventListener("click", async () => {
     predictBtn.disabled = false;
   }
 });
-
 
 const getCanvasCoords = (event, canvas) => {
   const rect = canvas.getBoundingClientRect();

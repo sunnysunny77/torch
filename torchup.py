@@ -63,10 +63,11 @@ def preprocess_image(file_bytes):
     img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
     if img is None:
         return None
-    img = cv2.resize(img, (28, 28))
+
     img = img.astype(np.float32) / 255.0
-    img = np.expand_dims(img, axis=0)  
-    img = np.expand_dims(img, axis=0)  
+    img = np.expand_dims(img, axis=0)
+    img = np.expand_dims(img, axis=0)
+
     return torch.from_numpy(img)
 
 def get_target(token):
