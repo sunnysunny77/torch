@@ -57,49 +57,59 @@ predictBtn.addEventListener("click", async () => {
     predictBtn.disabled = true;
     message.innerHTML = "<img class='spinner' src='./images/spinner.gif' width='30' height='30' alt='spinner' />";
 
-    const tmpCanvas = document.createElement("canvas");
-    const tmpCtx = tmpCanvas.getContext("2d");
-    tmpCanvas.width = 28;
-    tmpCanvas.height = 28;
+    const fullCanvas = document.createElement("canvas");
+    fullCanvas.width = canvas.width;
+    fullCanvas.height = canvas.height;
+    const fullCtx = fullCanvas.getContext("2d");
 
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let xMin = canvas.width, xMax = 0, yMin = canvas.height, yMax = 0;
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const idx = (y * canvas.width + x) * 4;
-        const alpha = imgData.data[idx + 3];
-        if (alpha > 0) { 
-          if (x < xMin) xMin = x;
-          if (x > xMax) xMax = x;
-          if (y < yMin) yMin = y;
-          if (y > yMax) yMax = y;
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);;
+
+    if (INVERT) {
+      const invertedData = ctx.createImageData(image.width, image.height);
+      for (let i = 0; i < image.data.length; i += 4) {
+        invertedData.data[i]     = 255 - image.data[i];
+        invertedData.data[i + 1] = 255 - image.data[i + 1];
+        invertedData.data[i + 2] = 255 - image.data[i + 2];
+        invertedData.data[i + 3] = image.data[i + 3];
+      };
+      fullCtx.putImageData(invertedData, 0, 0);
+    } else {
+
+      fullCtx.putImageData(image, 0, 0);
+    }
+
+    const imageData = fullCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+    let minX = fullCanvas.width, minY = fullCanvas.height;
+    let maxX = 0, maxY = 0;
+
+    for (let y = 0; y < fullCanvas.height; y++) {
+      for (let x = 0; x < fullCanvas.width; x++) {
+        const idx = (y * fullCanvas.width + x) * 4;
+        if (imageData[idx] > 0) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
         }
       }
     }
 
-    if (xMax < xMin || yMax < yMin) {
-      message.innerText = "Draw something first!";
-      predictBtn.disabled = false;
-      return;
-    }
-
-    const boxWidth = xMax - xMin + 1;
-    const boxHeight = yMax - yMin + 1;
+    const boxWidth = maxX - minX + 1;
+    const boxHeight = maxY - minY + 1;
     const scale = 20 / Math.max(boxWidth, boxHeight);
-    const newWidth = Math.round(boxWidth * scale);
-    const newHeight = Math.round(boxHeight * scale);
+    const dx = (28 - boxWidth * scale) / 2;
+    const dy = (28 - boxHeight * scale) / 2;
 
-  
-    tmpCtx.fillStyle = INVERT ? "white" : "black";
-    tmpCtx.fillRect(0, 0, 28, 28);
+    const tmpCanvas = document.createElement("canvas");
+    tmpCanvas.width = 28;
+    tmpCanvas.height = 28;
+    const tmpCtx = tmpCanvas.getContext("2d");
 
     tmpCtx.drawImage(
-      canvas,
-      xMin, yMin, boxWidth, boxHeight,
-      Math.round((28 - newWidth) / 2),
-      Math.round((28 - newHeight) / 2),
-      newWidth,
-      newHeight
+      fullCanvas,
+      minX, minY, boxWidth, boxHeight,
+      dx, dy, boxWidth * scale, boxHeight * scale
     );
 
     const blob = await new Promise(resolve => tmpCanvas.toBlob(resolve, "image/png"));
