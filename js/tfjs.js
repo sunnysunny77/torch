@@ -52,40 +52,13 @@ clearBtn.addEventListener("click", () => {
   message.innerText = "Draw the word";
 });
 
-predictBtn.addEventListener("click", async () => {
-  try {
-    predictBtn.disabled = true;
-    message.innerHTML = "<img class='spinner' src='./images/spinner.gif' width='30' height='30' alt='spinner' />";
-
-    const fullCanvas = document.createElement("canvas");
-    fullCanvas.width = canvas.width;
-    fullCanvas.height = canvas.height;
-    const fullCtx = fullCanvas.getContext("2d");
-
-    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);;
-
-    if (INVERT) {
-      const invertedData = ctx.createImageData(image.width, image.height);
-      for (let i = 0; i < image.data.length; i += 4) {
-        invertedData.data[i]     = 255 - image.data[i];
-        invertedData.data[i + 1] = 255 - image.data[i + 1];
-        invertedData.data[i + 2] = 255 - image.data[i + 2];
-        invertedData.data[i + 3] = image.data[i + 3];
-      };
-      fullCtx.putImageData(invertedData, 0, 0);
-    } else {
-
-      fullCtx.putImageData(image, 0, 0);
-    }
-
-    const imageData = fullCtx.getImageData(0, 0, canvas.width, canvas.height).data;
-
-    let minX = fullCanvas.width, minY = fullCanvas.height;
+const resizeCanvas = (imageData, canvas) => {
+    let minX = CANVAS_WIDTH, minY = CANVAS_HEIGHT;
     let maxX = 0, maxY = 0;
 
-    for (let y = 0; y < fullCanvas.height; y++) {
-      for (let x = 0; x < fullCanvas.width; x++) {
-        const idx = (y * fullCanvas.width + x) * 4;
+    for (let y = 0; y < CANVAS_HEIGHT; y++) {
+      for (let x = 0; x < CANVAS_WIDTH; x++) {
+        const idx = (y * CANVAS_WIDTH + x) * 4;
         if (imageData[idx] > 0) {
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
@@ -101,18 +74,53 @@ predictBtn.addEventListener("click", async () => {
     const dx = (28 - boxWidth * scale) / 2;
     const dy = (28 - boxHeight * scale) / 2;
 
-    const tmpCanvas = document.createElement("canvas");
-    tmpCanvas.width = 28;
-    tmpCanvas.height = 28;
-    const tmpCtx = tmpCanvas.getContext("2d");
+    const resizedCanvas = document.createElement("canvas");
+    resizedCanvas.width = 28;
+    resizedCanvas.height = 28;
+    const resizedCtx = resizedCanvas.getContext("2d");
 
-    tmpCtx.drawImage(
-      fullCanvas,
+    resizedCtx.drawImage(
+      canvas,
       minX, minY, boxWidth, boxHeight,
       dx, dy, boxWidth * scale, boxHeight * scale
     );
 
-    const blob = await new Promise(resolve => tmpCanvas.toBlob(resolve, "image/png"));
+    return resizedCanvas;
+};
+
+const processCanvas = (image) => {
+    if (INVERT) {
+      const invertedCanvas = document.createElement("canvas");
+      invertedCanvas.width = CANVAS_WIDTH;
+      invertedCanvas.height = CANVAS_HEIGHT;
+      const invertedCtx = invertedCanvas.getContext("2d");
+      const invertedData = ctx.createImageData(image.width, image.height);
+      for (let i = 0; i < image.data.length; i += 4) {
+        invertedData.data[i]     = 255 - image.data[i];
+        invertedData.data[i + 1] = 255 - image.data[i + 1];
+        invertedData.data[i + 2] = 255 - image.data[i + 2];
+        invertedData.data[i + 3] = image.data[i + 3];
+      };
+      invertedCtx.putImageData(invertedData, 0, 0);
+
+      return { imageData: invertedCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT).data, canvas: invertedCanvas };
+    }
+
+    return { imageData:  image.data, canvas: canvas };
+};
+
+predictBtn.addEventListener("click", async () => {
+  try {
+    predictBtn.disabled = true;
+    message.innerHTML = "<img class='spinner' src='./images/spinner.gif' width='30' height='30' alt='spinner' />";
+
+    const image = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    const { imageData, canvas } = processCanvas(image);
+
+    const resizedCanvas = resizeCanvas(imageData, canvas);
+
+    const blob = await new Promise(resolve => resizedCanvas.toBlob(resolve, "image/png"));
 
     const formData = new FormData();
     formData.append("file", blob, "canvas.png");
@@ -127,7 +135,6 @@ predictBtn.addEventListener("click", async () => {
 
     const data = await res.json();
     message.innerText = data.match ? "Correct": "Wrong";
-
   } catch (err) {
     console.error(err);
     message.innerText = "Error";
