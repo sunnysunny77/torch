@@ -88,25 +88,26 @@ const resizeCanvas = (imageData, canvas) => {
     return resizedCanvas;
 };
 
-const processCanvas = (image) => {
-    if (INVERT) {
-      const invertedCanvas = document.createElement("canvas");
-      invertedCanvas.width = CANVAS_WIDTH;
-      invertedCanvas.height = CANVAS_HEIGHT;
-      const invertedCtx = invertedCanvas.getContext("2d");
-      const invertedData = ctx.createImageData(image.width, image.height);
-      for (let i = 0; i < image.data.length; i += 4) {
-        invertedData.data[i]     = 255 - image.data[i];
-        invertedData.data[i + 1] = 255 - image.data[i + 1];
-        invertedData.data[i + 2] = 255 - image.data[i + 2];
-        invertedData.data[i + 3] = image.data[i + 3];
-      };
-      invertedCtx.putImageData(invertedData, 0, 0);
+const invertCanvas = (ctx) => {
+  const image = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      return { imageData: invertedCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT).data, canvas: invertedCanvas };
-    }
+  const invertedCanvas = document.createElement("canvas");
+  invertedCanvas.width = CANVAS_WIDTH;
+  invertedCanvas.height = CANVAS_HEIGHT;
+  const invertedCtx = invertedCanvas.getContext("2d");
 
-    return { imageData:  image.data, canvas: canvas };
+  const invertedData = ctx.createImageData(image.width, image.height);
+
+  for (let i = 0; i < image.data.length; i += 4) {
+    invertedData.data[i]     = 255 - image.data[i];
+    invertedData.data[i + 1] = 255 - image.data[i + 1];
+    invertedData.data[i + 2] = 255 - image.data[i + 2];
+    invertedData.data[i + 3] = image.data[i + 3];
+  };
+
+  invertedCtx.putImageData(invertedData, 0, 0);
+
+  return { imageData: invertedCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT).data, obj: invertedCanvas };
 };
 
 predictBtn.addEventListener("click", async () => {
@@ -114,11 +115,9 @@ predictBtn.addEventListener("click", async () => {
     predictBtn.disabled = true;
     message.innerHTML = "<img class='spinner' src='./images/spinner.gif' width='30' height='30' alt='spinner' />";
 
-    const image = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    const { imageData, obj } = INVERT ? invertCanvas(ctx) : { imageData: ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT).data, obj: canvas };
 
-    const { imageData, canvas } = processCanvas(image);
-
-    const resizedCanvas = resizeCanvas(imageData, canvas);
+    const resizedCanvas = resizeCanvas(imageData, obj);
 
     const blob = await new Promise(resolve => resizedCanvas.toBlob(resolve, "image/png"));
 
@@ -134,6 +133,7 @@ predictBtn.addEventListener("click", async () => {
     if (!res.ok) throw new Error(res.statusText);
 
     const data = await res.json();
+
     message.innerText = data.match ? "Correct": "Wrong";
   } catch (err) {
     console.error(err);
