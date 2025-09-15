@@ -43,12 +43,12 @@ const clear = () => {
 resetBtn.addEventListener("click",  async () => {
   clear();
   await setRandomLabels();
-  message.innerText = "Draw the word";
+  message.innerText = "Draw the capital letter";
 });
 
 clearBtn.addEventListener("click", () => {
   clear();
-  message.innerText = "Draw the word";
+  message.innerText = "Draw the capital letter";
 });
 
 const resizeCanvas = (imageData, canvas) => {
@@ -188,5 +188,5 @@ export const tfjs = async () => {
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
   await setRandomLabels();
-  message.innerText = "Draw the word";
+  message.innerText = "Draw the capital letter";
 };
