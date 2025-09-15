@@ -4,7 +4,7 @@ const CANVAS_WIDTH = 280;
 const CANVAS_HEIGHT = 280;
 const INVERT = false;
 
-const host = "http://127.0.0.1:8000";
+const host = "https://torch.localhost:3000/api";
 
 const canvas = document.querySelector(".quad");
 const resetBtn = document.querySelector("#resetBtn");
@@ -17,14 +17,13 @@ canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 const ctx = canvas.getContext("2d");
 
-let token = "";
-
 const setRandomLabels = async () => {
   try {
-    const res = await fetch(`${host}/random_label_image`);
+    const res = await fetch(`${host}/random_label_image`, {
+      credentials: "include"
+    });
     if (!res.ok) throw new Error(res.statusText);
     const data = await res.json();
-    token = data.token;
     output.innerHTML = `<img src='data:image/png;base64,${data.image}' alt='label' />`;
   } catch (err) {
     console.error(err);
@@ -123,11 +122,11 @@ predictBtn.addEventListener("click", async () => {
 
     const formData = new FormData();
     formData.append("file", blob, "canvas.png");
-    formData.append("token", token); 
 
     const res = await fetch(`${host}/predict`, {
       method: "POST",
       body: formData,
+      credentials: "include"
     });
 
     if (!res.ok) throw new Error(res.statusText);
