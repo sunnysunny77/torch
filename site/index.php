@@ -18,16 +18,16 @@
 
     <div class="hr-container d-flex flex-column" id="container">
 
-      <h1 class="text-center mb-4">Hand drawn recognition</h1>
+      <h1 class="text-center mb-3 mb-sm-4">Hand drawn recognition</h1>
 
-      <div class="mb-5 d-flex" id="canvas-wrapper">
+      <div class="mb-3 mb-sm-5 d-flex" id="canvas-wrapper">
 
         <canvas class="quad"></canvas>
         <div class="fill"></div>
 
       </div>
 
-      <div class="row justify-content-evenly mb-4 g-0">
+      <div class="row justify-content-evenly mb-3 mb-sm-5 g-0">
 
         <div class="col-32 col-sm-12 d-flex justify-content-center">
 
