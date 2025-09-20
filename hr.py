@@ -10,8 +10,10 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+DEVICE = torch.device("cuda")
+LEARNING_RATE = 1e-3
+BATCH_SIZE = 64
+EPOCHS = 50
 
 SUBSETS = {
     "digits":  {"range": (0, 9),   "num_classes": 10},  
@@ -24,7 +26,7 @@ SUBSET = "upper"
 label_min, label_max = SUBSETS[SUBSET]["range"]
 NUM_CLASSES = SUBSETS[SUBSET]["num_classes"]
 
-df_train = pd.read_csv("./emnist-byclass-test.csv", header=None)
+df_train = pd.read_csv("/kaggle/input/emnist/emnist-byclass-test.csv", header=None)
 
 X = df_train.drop(columns=[0]).to_numpy()
 y = df_train[0].to_numpy()
@@ -50,8 +52,8 @@ y_val = torch.from_numpy(y_val).long()
 train_dataset = TensorDataset(X_train, y_train)
 val_dataset = TensorDataset(X_val, y_val)
 
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=64)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
 
 model = nn.Sequential(
     nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1),
@@ -75,89 +77,58 @@ model = nn.Sequential(
     nn.Linear(128, NUM_CLASSES)  
 )
 
-model.to(device)
+model.to(DEVICE)
 
 augment = nn.Sequential(
     K.RandomAffine(degrees=3, translate=(0.05, 0.05), scale=(0.95, 1.05)), 
     K.RandomContrast(0.05) 
-).to(device)
+).to(DEVICE)
 
-def train_one_epoch(model, loader, criterion, optimizer, device):
+
+loss_fn = nn.CrossEntropyLoss()
+
+optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+def train_loop(dataloader, model, loss_fn, optimizer):
+    size = len(dataloader.dataset)
     model.train()
-    running_loss = 0.0
-    for X_batch, y_batch in loader:
-        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-        X_batch = augment(X_batch)  
+    for batch, (X, y) in enumerate(dataloader):
+        X = X.to(DEVICE)
+        y = y.to(DEVICE)
+        pred = model(X)
+        loss = loss_fn(pred, y)
 
-        optimizer.zero_grad()
-        logits = model(X_batch)
-        loss = criterion(logits, y_batch)
         loss.backward()
         optimizer.step()
+        optimizer.zero_grad()
 
-        running_loss += loss.item() * X_batch.size(0)
-    
-    epoch_loss = running_loss / len(loader.dataset)
-    return epoch_loss
+        if batch % 100 == 0:
+            loss, current = loss.item(), batch * BATCH_SIZE + len(X)
+            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
-def evaluate(model, loader, device):
+def test_loop(dataloader, model, loss_fn):
+
     model.eval()
-    all_preds, all_labels = [], []
+    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    test_loss, correct = 0, 0
+
     with torch.no_grad():
-        for X_batch, y_batch in loader:
-            X_batch = X_batch.to(device)
-            logits = model(X_batch)
-            preds = logits.argmax(1).cpu().numpy()
-            all_preds.extend(preds)
-            all_labels.extend(y_batch.numpy())
-    
-    acc = accuracy_score(all_labels, all_preds)
-    return acc
+        for X, y in dataloader:
+            X = X.to(DEVICE)
+            y = y.to(DEVICE)
+            pred = model(X)
+            test_loss += loss_fn(pred, y).item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, device, epochs=5):
-    for epoch in range(epochs):
-        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_acc = evaluate(model, val_loader, device)
-        print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Accuracy: {val_acc:.4f}")
+    test_loss /= num_batches
+    correct /= size
+    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
-criterion = nn.CrossEntropyLoss()
-
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-train_model(model, train_loader, val_loader, criterion, optimizer, device, epochs=30)
+for t in range(EPOCHS):
+    print(f"Epoch {t+1}\n-------------------------------")
+    train_loop(train_loader, model, loss_fn, optimizer)
+    test_loop(val_loader, model, loss_fn)
+print("Done!")
 
 torch.save(model.state_dict(), "cnn_emnist_upper_weights.pth")
-
-def plot_softmax_predictions(model, loader, device, n=10, num_classes=NUM_CLASSES):
-    model.eval()
-    plotted = 0
-    with torch.no_grad():
-        for X_batch, y_batch in loader:
-            X_batch = X_batch.to(device)
-            logits = model(X_batch)
-            probs = F.softmax(logits, dim=1)
-            preds = probs.argmax(1).cpu().numpy()
-            probs = probs.cpu().numpy()
-            
-            for i in range(X_batch.size(0)):
-                plt.figure(figsize=(6, 4))
-                
-                img = X_batch[i].cpu().squeeze()
-                plt.subplot(1,2,1)
-                plt.imshow(img, cmap='gray')
-                plt.title(f"True: {y_batch[i].item()}, Pred: {preds[i]}")
-                plt.axis('off')
-                
-                plt.subplot(1,2,2)
-                plt.bar(range(num_classes), probs[i])
-                plt.xticks(range(num_classes))
-                plt.ylim([0, 1])
-                plt.title("Softmax Probabilities")
-                
-                plt.show()
-                
-                plotted += 1
-                if plotted >= n:
-                    return
-                    
-plot_softmax_predictions(model, val_loader, device, n=10, num_classes=NUM_CLASSES)
