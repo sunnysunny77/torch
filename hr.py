@@ -9,6 +9,7 @@ import torch.optim as optim
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import classification_report, multilabel_confusion_matrix, accuracy_score
+from sklearn.model_selection import train_test_split
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
@@ -47,7 +48,6 @@ label_min, label_max = subsets[subset]["range"]
 num_classes = subsets[subset]["num_classes"]
 class_names = subsets[subset]["class_names"]
 
-
 df_train = pd.read_csv("./emnist-byclass-train.csv", header=None)
 df_test = pd.read_csv("./emnist-byclass-test.csv", header=None)
 
@@ -71,15 +71,23 @@ def prep(X):
 X_train = prep(X_train)
 X_test = prep(X_test)
 
+X_train, X_val, y_train, y_val = train_test_split(
+    X_train, y_train, test_size=0.1, random_state=42, stratify=y_train
+)
+
 X_train = torch.from_numpy(X_train)
 y_train = torch.from_numpy(y_train).long()
+X_val = torch.from_numpy(X_val)
+y_val = torch.from_numpy(y_val).long()
 X_test = torch.from_numpy(X_test)
 y_test = torch.from_numpy(y_test).long()
 
 train_dataset = TensorDataset(X_train, y_train)
+val_dataset = TensorDataset(X_val, y_val)
 test_dataset = TensorDataset(X_test, y_test)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size)
 test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
 class CNN(nn.Module):
@@ -136,21 +144,48 @@ optimizer = optim.Adam(model.parameters(), lr=lr)
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
-    for X, y in train_loader:
-        X = X.to(device)
-        y = y.to(device)
+    all_preds = []
+    all_labels = []
+
+    for X_batch, y_batch in train_loader:
+        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+        
         optimizer.zero_grad()
-        X_aug = augment(X)
-        pred = model(X_aug)
-        loss = loss_fn(pred, y)
+        outputs = model(X_batch)
+        loss = loss_fn(outputs, y_batch)
         loss.backward()
         optimizer.step()
-        running_loss += loss.item() * X.size(0)
-        
-    epoch_loss = running_loss / len(train_loader.dataset) 
-    print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.6f}")
+
+        running_loss += loss.item() * X_batch.size(0)
+
+        preds = torch.argmax(outputs, dim=1)
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(y_batch.cpu().numpy())
+
+    train_loss = running_loss / len(train_loader.dataset)
+    train_acc = accuracy_score(all_labels, all_preds)
 
     model.eval()
+    val_loss = 0.0
+    val_preds, val_labels = [], []
+
+    with torch.no_grad():
+        for X_batch, y_batch in val_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            outputs = model(X_batch)
+            loss = loss_fn(outputs, y_batch)
+
+            val_loss += loss.item() * X_batch.size(0)
+            preds = torch.argmax(outputs, dim=1)
+            val_preds.extend(preds.cpu().numpy())
+            val_labels.extend(y_batch.cpu().numpy())
+
+    val_loss /= len(val_loader.dataset)
+    val_acc = accuracy_score(val_labels, val_preds)
+
+    print(f"Epoch {epoch+1}/{num_epochs} | "f"Train Loss: {train_loss:.6f}, Acc: {train_acc*100:.2f}% | "f"Val Loss: {val_loss:.6f}, Acc: {val_acc*100:.2f}%")
+
+model.eval()
 y_true, y_pred = [], []
 
 with torch.no_grad():
@@ -158,8 +193,8 @@ with torch.no_grad():
         X = X.to(device)
         y = y.to(device)
         outputs = model(X)
-        preds = torch.argmax(outputs, dim=1).cpu().numpy()
-        y_pred.extend(preds)
+        preds = torch.argmax(outputs, dim=1)
+        y_pred.extend(preds.cpu().numpy())
         y_true.extend(y.cpu().numpy())
 
 report = classification_report(y_true, y_pred, target_names=class_names)
@@ -167,9 +202,7 @@ acc = accuracy_score(y_true, y_pred)
 mcm_test = multilabel_confusion_matrix(y_true, y_pred)
 
 print(report)
-print(f"\n Overall Accuracy: {acc*100:.2f}%")
+print(f"Overall Accuracy: {acc*100:.2f}%")
 for i, cm in enumerate(mcm_test):
     tn, fp, fn, tp = cm.ravel()
     print(f"Class {i} ({class_names[i]}): TP={tp}, FP={fp}, TN={tn}, FN={fn}")
-
-torch.save(model.state_dict(), "cnn_emnist_upper_weights.pth")
