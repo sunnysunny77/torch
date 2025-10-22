@@ -18,6 +18,8 @@ lr = 1e-3
 batch_size = 64
 num_epochs = 50
 
+pd.set_option("display.max_rows", None)
+
 subsets = {
     "digits": {
         "range": (0, 9),
@@ -51,6 +53,13 @@ class_names = subsets[subset]["class_names"]
 df_train = pd.read_csv("./emnist-byclass-train.csv", header=None)
 df_test = pd.read_csv("./emnist-byclass-test.csv", header=None)
 
+print(df_train.head())
+print(df_train.info())
+print(df_train.isnull().sum())
+print(df_test.head())
+print(df_test.info())
+print(df_test.isnull().sum())
+
 X_train = df_train.drop(columns=[0]).to_numpy()
 y_train = df_train[0].to_numpy()
 
@@ -75,6 +84,11 @@ X_train, X_val, y_train, y_val = train_test_split(
     X_train, y_train, test_size=0.1, random_state=42, stratify=y_train
 )
 
+print(X_train.shape)     
+print(X_train.dtype)    
+print(y_train.shape)
+print(np.unique(y_train))  
+
 X_train = torch.from_numpy(X_train)
 y_train = torch.from_numpy(y_train).long()
 X_val = torch.from_numpy(X_val)
@@ -89,6 +103,8 @@ test_dataset = TensorDataset(X_test, y_test)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size)
 test_loader = DataLoader(test_dataset, batch_size=batch_size)
+
+print(f"Train: {len(train_dataset)}, Val: {len(val_dataset)}, Test: {len(test_dataset)}")
 
 class CNN(nn.Module):
     def __init__(self, num_classes):
@@ -138,8 +154,17 @@ class Augment(nn.Module):
 model = CNN(num_classes).to(device)
 augment = Augment().to(device)
 
+print(model)
+sum(p.numel() for p in model.parameters())
+
 loss_fn = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=lr)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=5, factor=0.5)
+
+best_val_acc = 0
+best_model_state = None
+patience_counter = 0
+patience = 10 
 
 for epoch in range(num_epochs):
     model.train()
@@ -183,7 +208,24 @@ for epoch in range(num_epochs):
     val_loss /= len(val_loader.dataset)
     val_acc = accuracy_score(val_labels, val_preds)
 
-    print(f"Epoch {epoch+1}/{num_epochs} | "f"Train Loss: {train_loss:.6f}, Acc: {train_acc*100:.2f}% | "f"Val Loss: {val_loss:.6f}, Acc: {val_acc*100:.2f}%")
+    print(f"Epoch {epoch+1}/{num_epochs} | "
+          f"Train Loss: {train_loss:.6f}, Acc: {train_acc*100:.2f}% | "
+          f"Val Loss: {val_loss:.6f}, Acc: {val_acc*100:.2f}%")
+
+    if val_acc > best_val_acc:
+        best_val_acc = val_acc
+        best_model_state = model.state_dict().copy()
+        patience_counter = 0
+    else:
+        patience_counter += 1
+        if patience_counter >= patience:
+            print(f"Early stopping at epoch {epoch+1}")
+            break
+
+    scheduler.step(val_acc)
+
+model.load_state_dict(best_model_state)
+print(f"Best model (val_acc={best_val_acc:.4f}) restored")
 
 model.eval()
 y_true, y_pred = [], []
@@ -200,9 +242,23 @@ with torch.no_grad():
 report = classification_report(y_true, y_pred, target_names=class_names)
 acc = accuracy_score(y_true, y_pred)
 mcm_test = multilabel_confusion_matrix(y_true, y_pred)
+data = []
 
 print(report)
 print(f"Overall Accuracy: {acc*100:.2f}%")
 for i, cm in enumerate(mcm_test):
     tn, fp, fn, tp = cm.ravel()
-    print(f"Class {i} ({class_names[i]}): TP={tp}, FP={fp}, TN={tn}, FN={fn}")
+    class_acc = tp / (tp + fn) if (tp + fn) > 0 else 0
+    data.append({
+        "Class": class_names[i],
+        "TP": tp,
+        "FP": fp,
+        "TN": tn,
+        "FN": fn,
+        "Accuracy": f"{class_acc*100:.2f}%"
+    })
+
+df_class_metrics = pd.DataFrame(data)
+print(df_class_metrics)
+
+torch.save(model.state_dict(), "cnn_emnist_upper_weights.pth")
