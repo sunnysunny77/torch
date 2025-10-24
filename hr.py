@@ -175,7 +175,19 @@ augment = Augment().to(device)
 print(model)
 sum(p.numel() for p in model.parameters())
 
-loss_fn = nn.CrossEntropyLoss()
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=0.25, gamma=2):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, inputs, targets):
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+        pt = torch.exp(-ce_loss) 
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
+        return focal_loss.mean()
+
+loss_fn = FocalLoss(0.25, gamma=2)
 optimizer = optim.Adam(model.parameters(), lr=lr)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=5, factor=0.5)
 
