@@ -19,6 +19,7 @@ batch_size = 64
 num_epochs = 50
 
 pd.set_option("display.max_rows", None)
+pd.set_option("display.max_columns", None)
 
 subsets = {
     "digits": {
@@ -50,15 +51,32 @@ label_min, label_max = subsets[subset]["range"]
 num_classes = subsets[subset]["num_classes"]
 class_names = subsets[subset]["class_names"]
 
+def dataset_summary(df, show_counts=True):
+    total_rows = len(df)
+    
+    summary = pd.DataFrame({
+        "dtype": df.dtypes,
+        "non_null_count": df.notna().sum(),
+        "missing_count": df.isna().sum(),
+        "missing_%": (df.isna().mean() * 100).round(2),
+        "unique_count": df.nunique(),
+        "duplicated": df.duplicated().sum()
+    })
+
+    print(f"Dataset shape: {df.shape}")
+    if show_counts:
+        print(f"Total rows: {total_rows}")
+        print(f"Total duplicate rows: {summary['duplicated'].sum()}")
+    
+    summary = summary.sort_values(by="missing_%", ascending=False)
+    
+    return summary
+
 df_train = pd.read_csv("./emnist-byclass-train.csv", header=None)
 df_test = pd.read_csv("./emnist-byclass-test.csv", header=None)
 
-print(df_train.head())
-print(df_train.info())
-print(df_train.isnull().sum())
-print(df_test.head())
-print(df_test.info())
-print(df_test.isnull().sum())
+# Summary
+print(dataset_summary(df_train))
 
 X_train = df_train.drop(columns=[0]).to_numpy()
 y_train = df_train[0].to_numpy()
@@ -84,10 +102,10 @@ X_train, X_val, y_train, y_val = train_test_split(
     X_train, y_train, test_size=0.1, random_state=42, stratify=y_train
 )
 
-print(X_train.shape)     
-print(X_train.dtype)    
-print(y_train.shape)
-print(np.unique(y_train))  
+print("Number of features:", X_train.shape[1])
+print("X_train_balanced shape:", X_train.shape)
+print("y_train_balanced shape:", y_train.shape)
+print(np.unique(y_train)) 
 
 X_train = torch.from_numpy(X_train)
 y_train = torch.from_numpy(y_train).long()
