@@ -57,4 +57,17 @@
     npm run production "production-css production-js  -no-source-map"
     <br>
     <br>
+    python3.11 -m venv torch-env
+    <br>
+    <br>
+    source torch-env/bin/activate
+    <br>
+    <br>
+    pip install --upgrade pip setuptools wheel ipywidgets notebook
+    <br>
+    <br>
+    pip install -r requirements.txt
+    <br>
+    <br>
+    uvicorn torchup:app --reload
 </html>
